@@ -1,14 +1,56 @@
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+*.log
+*.sqlite3
+db.sqlite3
+
+# Virtual env
 .venv/
-.env.local
-.hf-cache/
-backend/outputs/*
-!backend/outputs/.gitkeep
-frontend/app/node_modules/
-frontend/app/dist/
-frontend/app/.vite/
-reports/
-coverage.xml
+env/
+venv/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node / React Native (Expo)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.expo/
+.expo-shared/
+web-build/
+dist/
+build/
+
+# macOS / Linux / Windows
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Docker
+*.pid
+*.sock
+*.tar
+
+# coverage reports (backend & frontend)
+coverage/
+backend/reports/
+backend/app/coverage/
+frontend/app/coverage/
+
+# Jest cache
+frontend/app/.jest-cache/
