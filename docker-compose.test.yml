@@ -1,0 +1,28 @@
+services:
+  backend_test:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        PYTORCH_VERSION: ${PYTORCH_VERSION:-2.7.1}
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    working_dir: /workspace
+    volumes:
+      - ./backend:/workspace
+      - ./data:/workspace/data:ro
+      - ./reports/backend:/reports/backend
+    command: >-
+      sh -lc "python -m pip install -r requirements.test.txt &&
+              coverage run -m pytest &&
+              coverage xml -o /reports/backend/coverage.xml"
+
+  frontend_test:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.test
+    working_dir: /app
+    volumes:
+      - ./frontend/app:/app
+      - ./data:/app/public/data:ro
+      - /app/node_modules
+    command: ["npm", "run", "typecheck"]

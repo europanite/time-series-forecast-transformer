@@ -1,0 +1,15 @@
+.git
+.github
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/node_modules
+**/dist
+**/.vite
+**/.env.local
+.hf-cache
+reports
+backend/outputs/*
+!backend/outputs/.gitkeep

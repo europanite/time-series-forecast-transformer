@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env.local
+.hf-cache/
+backend/outputs/*
+!backend/outputs/.gitkeep
+frontend/app/node_modules/
+frontend/app/dist/
+frontend/app/.vite/
+reports/
+coverage.xml
+.DS_Store
+Thumbs.db

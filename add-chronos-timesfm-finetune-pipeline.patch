@@ -1,0 +1,649 @@
+diff --git a/backend/src/local_ts_forecast/api.py b/backend/src/local_ts_forecast/api.py
+index 2daf951..eb8e3dc 100644
+--- a/backend/src/local_ts_forecast/api.py
++++ b/backend/src/local_ts_forecast/api.py
+@@ -19,6 +19,7 @@ class ForecastRequest(BaseModel):
+     model_id: str | None = None
+     device: str | None = None
+     backend: str = "chronos2"
++    checkpoint_path: str | None = None
+     target: str = "target"
+     quantile_levels: list[float] = Field(default_factory=lambda: [0.1, 0.5, 0.9])
+ 
+@@ -43,7 +44,15 @@ def root() -> dict[str, str]:
+ 
+ 
+ @lru_cache(maxsize=4)
+-def get_forecaster(model_id: str, device: str, backend: str, target: str, prediction_length: int, quantiles: tuple[float, ...]):
++def get_forecaster(
++    model_id: str,
++    device: str,
++    backend: str,
++    target: str,
++    prediction_length: int,
++    quantiles: tuple[float, ...],
++    checkpoint_path: str | None,
++):
+     config = ForecastConfig(
+         model_id=model_id,
+         device=device,
+@@ -51,6 +60,7 @@ def get_forecaster(model_id: str, device: str, backend: str, target: str, predic
+         quantile_levels=quantiles,
+         backend=backend,
+         target=target,
++        checkpoint_path=checkpoint_path,
+     )
+     return build_forecaster(config)
+ 
+@@ -75,6 +85,7 @@ def forecast(req: ForecastRequest) -> ForecastResponse:
+             req.target,
+             req.prediction_length,
+             tuple(req.quantile_levels),
++            req.checkpoint_path,
+         )
+         pred_df = forecaster.predict(history_df, future_df)
+         pred_df = pred_df.copy()
+@@ -83,4 +94,4 @@ def forecast(req: ForecastRequest) -> ForecastResponse:
+                 pred_df[column] = pred_df[column].dt.strftime("%Y-%m-%dT%H:%M:%S")
+         return ForecastResponse(rows=pred_df.to_dict(orient="records"))
+     except Exception as exc:  # noqa: BLE001 - surface validation/model errors through API
+-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+\ No newline at end of file
++        raise HTTPException(status_code=400, detail=str(exc)) from exc
+diff --git a/backend/src/local_ts_forecast/cli.py b/backend/src/local_ts_forecast/cli.py
+index 31780c9..8187708 100644
+--- a/backend/src/local_ts_forecast/cli.py
++++ b/backend/src/local_ts_forecast/cli.py
+@@ -9,6 +9,7 @@ from .io import ensure_parent, read_csv
+ from .plotting import plot_forecast
+ from .sample_data import write_sample_data
+ from .settings import get_settings
++from .torch_finetune import FineTuneConfig, train_residual_adapter
+ 
+ 
+ def parse_quantiles(value: str) -> tuple[float, ...]:
+@@ -35,6 +36,7 @@ def forecast_command(args: argparse.Namespace) -> None:
+         batch_size=args.batch_size,
+         context_length=args.context_length,
+         backend=args.backend,
++        checkpoint_path=args.checkpoint,
+     )
+     forecaster = build_forecaster(config)
+     pred_df = forecaster.predict(history_df, future_df)
+@@ -48,6 +50,37 @@ def forecast_command(args: argparse.Namespace) -> None:
+         print(f"forecast_plot={plot_path}")
+ 
+ 
++def train_command(args: argparse.Namespace) -> None:
++    settings = get_settings()
++    history_df = read_csv(args.input)
++    base_backend = args.base_backend or settings.backend
++    config = FineTuneConfig(
++        base_backend=base_backend,
++        base_model_id=args.model_id or settings.model_id_for_backend(base_backend),
++        device=args.device or settings.device,
++        prediction_length=args.prediction_length or settings.prediction_length,
++        context_length=args.context_length,
++        target=args.target,
++        batch_size=args.batch_size,
++        epochs=args.epochs,
++        learning_rate=args.learning_rate,
++        stride=args.stride,
++        max_windows=args.max_windows,
++        hidden_size=args.hidden_size,
++        num_layers=args.num_layers,
++        num_heads=args.num_heads,
++        dropout=args.dropout,
++        seed=args.seed,
++    )
++    summary = train_residual_adapter(history_df, args.output, config)
++    print(f"checkpoint={summary.checkpoint_path}")
++    print(f"examples={summary.examples}")
++    print(f"epochs={summary.epochs}")
++    print(f"final_loss={summary.final_loss:.6f}")
++    print(f"base_backend={summary.base_backend}")
++    print(f"target={summary.target}")
++
++
+ def sample_data_command(args: argparse.Namespace) -> None:
+     history_path, future_path = write_sample_data(
+         output_dir=args.output_dir,
+@@ -96,9 +129,31 @@ def build_parser() -> argparse.ArgumentParser:
+     forecast.add_argument("--target", default="target")
+     forecast.add_argument("--batch-size", type=int)
+     forecast.add_argument("--context-length", type=int)
+-    forecast.add_argument("--backend", choices=["chronos2", "timesfm", "seasonal_naive"], default=os.getenv("FORECAST_BACKEND", "chronos2"))
++    forecast.add_argument("--backend", choices=["chronos2", "timesfm", "seasonal_naive", "finetuned"], default=os.getenv("FORECAST_BACKEND", "chronos2"))
++    forecast.add_argument("--checkpoint", help="Fine-tuned residual adapter checkpoint. Required when --backend finetuned.")
+     forecast.set_defaults(func=forecast_command)
+ 
++    train = subparsers.add_parser("train", help="Fine-tune a residual adapter on top of Chronos-2, TimesFM, or seasonal_naive")
++    train.add_argument("--input", required=True, help="Training CSV. Required columns: timestamp/date and selected target. Optional: id/covariates")
++    train.add_argument("--output", default="outputs/finetuned_model.pt", help="Path to write the fine-tuned checkpoint")
++    train.add_argument("--target", default="target")
++    train.add_argument("--base-backend", choices=["chronos2", "timesfm", "seasonal_naive"], default=os.getenv("FORECAST_BACKEND", "chronos2"))
++    train.add_argument("--model-id", help="Base foundation model id. Defaults to CHRONOS_MODEL_ID or TIMESFM_MODEL_ID based on --base-backend.")
++    train.add_argument("--device", default=os.getenv("DEVICE", "cpu"), choices=["cpu", "cuda", "auto"])
++    train.add_argument("--prediction-length", type=int, default=int(os.getenv("PREDICTION_LENGTH", "48")))
++    train.add_argument("--context-length", type=int, default=96)
++    train.add_argument("--epochs", type=int, default=20)
++    train.add_argument("--learning-rate", type=float, default=1e-3)
++    train.add_argument("--batch-size", type=int, default=32)
++    train.add_argument("--stride", type=int, default=1)
++    train.add_argument("--max-windows", type=int, default=256)
++    train.add_argument("--hidden-size", type=int, default=128)
++    train.add_argument("--num-layers", type=int, default=2)
++    train.add_argument("--num-heads", type=int, default=4)
++    train.add_argument("--dropout", type=float, default=0.1)
++    train.add_argument("--seed", type=int, default=42)
++    train.set_defaults(func=train_command)
++
+     validate = subparsers.add_parser("validate", help="Validate CSV and pipeline without downloading a model")
+     validate.add_argument("--input", required=True)
+     validate.add_argument("--future-input")
+@@ -115,4 +170,4 @@ def main() -> None:
+ 
+ 
+ if __name__ == "__main__":
+-    main()
+\ No newline at end of file
++    main()
+diff --git a/backend/src/local_ts_forecast/forecaster.py b/backend/src/local_ts_forecast/forecaster.py
+index 5265167..06cb798 100644
+--- a/backend/src/local_ts_forecast/forecaster.py
++++ b/backend/src/local_ts_forecast/forecaster.py
+@@ -20,6 +20,7 @@ class ForecastConfig:
+     batch_size: int | None = None
+     context_length: int | None = None
+     backend: str = "chronos2"
++    checkpoint_path: str | None = None
+ 
+ 
+ def _primary_target(target: str | list[str]) -> str:
+@@ -319,4 +320,10 @@ def build_forecaster(config: ForecastConfig):  # noqa: ANN201
+         return TimesFMForecaster(config)
+     if config.backend == "seasonal_naive":
+         return SeasonalNaiveForecaster(config)
+-    raise ValueError(f"Unknown backend: {config.backend}")
+\ No newline at end of file
++    if config.backend == "finetuned":
++        if not config.checkpoint_path:
++            raise ValueError("checkpoint_path is required when backend=finetuned")
++        from .torch_finetune import FineTunedForecaster
++
++        return FineTunedForecaster(config.checkpoint_path, device=config.device)
++    raise ValueError(f"Unknown backend: {config.backend}")
+diff --git a/backend/src/local_ts_forecast/torch_finetune.py b/backend/src/local_ts_forecast/torch_finetune.py
+new file mode 100644
+index 0000000..7de0c9b
+--- /dev/null
++++ b/backend/src/local_ts_forecast/torch_finetune.py
+@@ -0,0 +1,341 @@
++from __future__ import annotations
++
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Any
++
++import numpy as np
++import pandas as pd
++import torch
++from torch import nn
++from torch.utils.data import DataLoader, TensorDataset
++
++from .io import ensure_parent, make_future_frame, normalize_future, normalize_history, validate_prediction_length
++
++
++@dataclass(frozen=True)
++class FineTuneConfig:
++    base_backend: str
++    base_model_id: str
++    device: str = "cpu"
++    prediction_length: int = 48
++    context_length: int = 96
++    target: str = "target"
++    id_column: str = "id"
++    timestamp_column: str = "timestamp"
++    quantile_levels: tuple[float, ...] = (0.1, 0.5, 0.9)
++    batch_size: int = 32
++    epochs: int = 20
++    learning_rate: float = 1e-3
++    stride: int = 1
++    max_windows: int | None = 256
++    hidden_size: int = 128
++    num_layers: int = 2
++    num_heads: int = 4
++    dropout: float = 0.1
++    seed: int = 42
++
++
++@dataclass(frozen=True)
++class FineTuneSummary:
++    checkpoint_path: str
++    examples: int
++    epochs: int
++    final_loss: float
++    base_backend: str
++    target: str
++
++
++class ResidualAdapter(nn.Module):
++    """Small direct multi-step head trained on top of foundation forecasts.
++
++    Inputs are the normalized historical target window and the normalized base
++    forecast produced by Chronos-2, TimesFM, or the offline seasonal baseline.
++    The model predicts a normalized residual for each future step.
++    """
++
++    def __init__(
++        self,
++        context_length: int,
++        prediction_length: int,
++        hidden_size: int,
++        num_layers: int,
++        num_heads: int,
++        dropout: float,
++    ) -> None:
++        super().__init__()
++        self.context_length = context_length
++        self.prediction_length = prediction_length
++        self.history_projection = nn.Linear(1, hidden_size)
++        self.base_projection = nn.Linear(1, hidden_size)
++        encoder_layer = nn.TransformerEncoderLayer(
++            d_model=hidden_size,
++            nhead=num_heads,
++            dim_feedforward=hidden_size * 4,
++            dropout=dropout,
++            batch_first=True,
++            activation="gelu",
++        )
++        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
++        self.head = nn.Sequential(
++            nn.LayerNorm(hidden_size * 2),
++            nn.Linear(hidden_size * 2, hidden_size),
++            nn.GELU(),
++            nn.Dropout(dropout),
++            nn.Linear(hidden_size, prediction_length),
++        )
++
++    def forward(self, history: torch.Tensor, base_forecast: torch.Tensor) -> torch.Tensor:
++        history_tokens = self.history_projection(history.unsqueeze(-1))
++        encoded = self.encoder(history_tokens)
++        history_state = encoded[:, -1, :]
++        base_state = self.base_projection(base_forecast.unsqueeze(-1)).mean(dim=1)
++        return self.head(torch.cat([history_state, base_state], dim=-1))
++
++
++def _resolve_torch_device(device: str) -> torch.device:
++    if device == "auto":
++        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
++    if device == "cuda" and not torch.cuda.is_available():
++        raise RuntimeError("DEVICE=cuda was requested, but CUDA is not available in this container.")
++    return torch.device(device)
++
++
++def _primary_target(target: str | list[str]) -> str:
++    if isinstance(target, str):
++        return target
++    if not target:
++        raise ValueError("target must not be empty")
++    return target[0]
++
++
++def _prediction_column(pred_df: pd.DataFrame) -> str:
++    if "predictions" in pred_df.columns:
++        return "predictions"
++    if "0.5" in pred_df.columns:
++        return "0.5"
++    raise ValueError("base forecast must contain a predictions or 0.5 column")
++
++
++def _make_model(config: FineTuneConfig) -> ResidualAdapter:
++    return ResidualAdapter(
++        context_length=config.context_length,
++        prediction_length=config.prediction_length,
++        hidden_size=config.hidden_size,
++        num_layers=config.num_layers,
++        num_heads=config.num_heads,
++        dropout=config.dropout,
++    )
++
++
++def _build_base_forecaster(config: FineTuneConfig):  # noqa: ANN202 - avoids an import cycle at module import time
++    from .forecaster import ForecastConfig, build_forecaster
++
++    return build_forecaster(
++        ForecastConfig(
++            model_id=config.base_model_id,
++            device=config.device,
++            prediction_length=config.prediction_length,
++            quantile_levels=config.quantile_levels,
++            id_column=config.id_column,
++            timestamp_column=config.timestamp_column,
++            target=config.target,
++            context_length=config.context_length,
++            backend=config.base_backend,
++        )
++    )
++
++
++def _window_starts(length: int, context_length: int, prediction_length: int, stride: int) -> list[int]:
++    last_start = length - context_length - prediction_length
++    if last_start < 0:
++        return []
++    return list(range(0, last_start + 1, max(1, stride)))
++
++
++def build_residual_examples(history_df: pd.DataFrame, config: FineTuneConfig) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, float, float]:
++    prediction_length = validate_prediction_length(config.prediction_length)
++    if config.context_length <= 0:
++        raise ValueError("context_length must be positive")
++
++    target_column = _primary_target(config.target)
++    history_df = normalize_history(history_df, config.target, config.id_column, config.timestamp_column)
++    target_values = history_df[target_column].astype(float).to_numpy()
++    mean = float(np.mean(target_values))
++    std = float(np.std(target_values))
++    if not np.isfinite(std) or std < 1e-8:
++        std = 1.0
++
++    base_forecaster = _build_base_forecaster(config)
++    examples: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
++
++    for item_id, group in history_df.groupby(config.id_column):
++        group = group.sort_values(config.timestamp_column).reset_index(drop=True)
++        starts = _window_starts(len(group), config.context_length, prediction_length, config.stride)
++        for start in starts:
++            context_slice = group.iloc[start : start + config.context_length].copy()
++            future_slice = group.iloc[start + config.context_length : start + config.context_length + prediction_length].copy()
++            future_known = future_slice.drop(columns=[target_column])
++            base_pred = base_forecaster.predict(context_slice, future_known)
++            pred_col = _prediction_column(base_pred)
++            base_values = base_pred.sort_values(config.timestamp_column)[pred_col].astype(float).to_numpy()[:prediction_length]
++            actual_values = future_slice[target_column].astype(float).to_numpy()[:prediction_length]
++            context_values = context_slice[target_column].astype(float).to_numpy()[-config.context_length :]
++            if len(base_values) != prediction_length or len(actual_values) != prediction_length:
++                raise ValueError(f"base forecast window for id={item_id!r} returned an unexpected length")
++            examples.append(
++                (
++                    ((context_values - mean) / std).astype(np.float32),
++                    ((base_values - mean) / std).astype(np.float32),
++                    ((actual_values - base_values) / std).astype(np.float32),
++                )
++            )
++            if config.max_windows is not None and len(examples) >= config.max_windows:
++                break
++        if config.max_windows is not None and len(examples) >= config.max_windows:
++            break
++
++    if not examples:
++        raise ValueError(
++            "Not enough training windows. Increase history rows or reduce context_length/prediction_length. "
++            f"Required at least {config.context_length + prediction_length} rows per series."
++        )
++
++    histories, bases, residuals = zip(*examples, strict=True)
++    return (
++        torch.tensor(np.stack(histories), dtype=torch.float32),
++        torch.tensor(np.stack(bases), dtype=torch.float32),
++        torch.tensor(np.stack(residuals), dtype=torch.float32),
++        mean,
++        std,
++    )
++
++
++def train_residual_adapter(history_df: pd.DataFrame, output_path: str | Path, config: FineTuneConfig) -> FineTuneSummary:
++    torch.manual_seed(config.seed)
++    np.random.seed(config.seed)
++    device = _resolve_torch_device(config.device)
++    histories, bases, residuals, mean, std = build_residual_examples(history_df, config)
++
++    dataset = TensorDataset(histories, bases, residuals)
++    loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
++    model = _make_model(config).to(device)
++    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
++    criterion = nn.MSELoss()
++
++    final_loss = 0.0
++    for _ in range(config.epochs):
++        model.train()
++        running_loss = 0.0
++        batches = 0
++        for history_batch, base_batch, residual_batch in loader:
++            history_batch = history_batch.to(device)
++            base_batch = base_batch.to(device)
++            residual_batch = residual_batch.to(device)
++            optimizer.zero_grad(set_to_none=True)
++            pred_residual = model(history_batch, base_batch)
++            loss = criterion(pred_residual, residual_batch)
++            loss.backward()
++            optimizer.step()
++            running_loss += float(loss.detach().cpu())
++            batches += 1
++        final_loss = running_loss / max(1, batches)
++
++    checkpoint = {
++        "format": "local_ts_forecast_residual_adapter_v1",
++        "config": asdict(config),
++        "normalization": {"mean": mean, "std": std},
++        "state_dict": model.cpu().state_dict(),
++        "summary": {
++            "examples": int(len(dataset)),
++            "epochs": int(config.epochs),
++            "final_loss": float(final_loss),
++        },
++    }
++    path = ensure_parent(output_path)
++    torch.save(checkpoint, path)
++    return FineTuneSummary(
++        checkpoint_path=str(path),
++        examples=int(len(dataset)),
++        epochs=int(config.epochs),
++        final_loss=float(final_loss),
++        base_backend=config.base_backend,
++        target=config.target,
++    )
++
++
++class FineTunedForecaster:
++    """Inference wrapper for checkpoints created by train_residual_adapter."""
++
++    def __init__(self, checkpoint_path: str | Path, device: str = "cpu") -> None:
++        self.checkpoint_path = str(checkpoint_path)
++        self.device = _resolve_torch_device(device)
++        self._checkpoint = torch.load(self.checkpoint_path, map_location="cpu", weights_only=False)
++        if self._checkpoint.get("format") != "local_ts_forecast_residual_adapter_v1":
++            raise ValueError(f"Unsupported fine-tuned checkpoint: {self.checkpoint_path}")
++        cfg = self._checkpoint["config"]
++        self.config = FineTuneConfig(**cfg)
++        self.mean = float(self._checkpoint["normalization"]["mean"])
++        self.std = float(self._checkpoint["normalization"]["std"])
++        self.model = _make_model(self.config)
++        self.model.load_state_dict(self._checkpoint["state_dict"])
++        self.model.to(self.device)
++        self.model.eval()
++        self._base_forecaster = None
++
++    @property
++    def base_forecaster(self):  # noqa: ANN201 - backend type differs across models
++        if self._base_forecaster is None:
++            self._base_forecaster = _build_base_forecaster(self.config)
++        return self._base_forecaster
++
++    def predict(self, history_df: pd.DataFrame, future_df: pd.DataFrame | None = None) -> pd.DataFrame:
++        cfg = self.config
++        prediction_length = validate_prediction_length(cfg.prediction_length)
++        target_column = _primary_target(cfg.target)
++        history_df = normalize_history(history_df, cfg.target, cfg.id_column, cfg.timestamp_column)
++        future_df = normalize_future(future_df, cfg.id_column, cfg.timestamp_column)
++        if future_df is None:
++            future_df = make_future_frame(history_df, prediction_length, cfg.id_column, cfg.timestamp_column)
++
++        base_pred = self.base_forecaster.predict(history_df, future_df).copy()
++        pred_col = _prediction_column(base_pred)
++        adjusted_frames: list[pd.DataFrame] = []
++
++        for item_id, pred_group in base_pred.groupby(cfg.id_column, sort=False):
++            hist_group = history_df[history_df[cfg.id_column] == item_id].sort_values(cfg.timestamp_column)
++            if len(hist_group) < cfg.context_length:
++                raise ValueError(
++                    f"history for id={item_id!r} is shorter than context_length={cfg.context_length}. "
++                    "Provide more history rows or train with a smaller context_length."
++                )
++            pred_group = pred_group.sort_values(cfg.timestamp_column).head(prediction_length).copy()
++            context_values = hist_group[target_column].astype(float).to_numpy()[-cfg.context_length :]
++            base_values = pred_group[pred_col].astype(float).to_numpy()[:prediction_length]
++            with torch.no_grad():
++                history_tensor = torch.tensor(((context_values - self.mean) / self.std)[None, :], dtype=torch.float32, device=self.device)
++                base_tensor = torch.tensor(((base_values - self.mean) / self.std)[None, :], dtype=torch.float32, device=self.device)
++                residual = self.model(history_tensor, base_tensor).detach().cpu().numpy()[0] * self.std
++            pred_group[pred_col] = base_values + residual
++            if pred_col != "predictions" and "predictions" in pred_group.columns:
++                pred_group["predictions"] = pred_group[pred_col]
++            elif pred_col == "predictions":
++                pass
++            for column in pred_group.columns:
++                if column in {cfg.id_column, cfg.timestamp_column, pred_col, "predictions"}:
++                    continue
++                if _is_quantile_column(column):
++                    pred_group[column] = pred_group[column].astype(float).to_numpy()[: len(pred_group)] + residual[: len(pred_group)]
++            adjusted_frames.append(pred_group)
++
++        if not adjusted_frames:
++            raise ValueError("fine-tuned forecast produced no rows")
++        return pd.concat(adjusted_frames, ignore_index=True)
++
++
++def _is_quantile_column(column: Any) -> bool:
++    try:
++        value = float(column)
++    except (TypeError, ValueError):
++        return False
++    return 0.0 < value < 1.0
+diff --git a/backend/tests/test_finetune.py b/backend/tests/test_finetune.py
+new file mode 100644
+index 0000000..bb756c0
+--- /dev/null
++++ b/backend/tests/test_finetune.py
+@@ -0,0 +1,43 @@
++from local_ts_forecast.forecaster import ForecastConfig, build_forecaster
++from local_ts_forecast.sample_data import build_sample_data
++from local_ts_forecast.torch_finetune import FineTuneConfig, train_residual_adapter
++
++
++def test_train_and_predict_finetuned_seasonal_naive_checkpoint(tmp_path) -> None:
++    history_df, _ = build_sample_data(periods=72, prediction_length=6, freq="30min")
++    checkpoint_path = tmp_path / "finetuned.pt"
++    summary = train_residual_adapter(
++        history_df,
++        checkpoint_path,
++        FineTuneConfig(
++            base_backend="seasonal_naive",
++            base_model_id="offline-smoke-test",
++            device="cpu",
++            prediction_length=6,
++            context_length=24,
++            target="target",
++            epochs=1,
++            batch_size=4,
++            max_windows=4,
++            hidden_size=32,
++            num_layers=1,
++            num_heads=4,
++        ),
++    )
++
++    assert checkpoint_path.exists()
++    assert summary.examples == 4
++
++    forecaster = build_forecaster(
++        ForecastConfig(
++            model_id="offline-smoke-test",
++            device="cpu",
++            prediction_length=6,
++            target="target",
++            backend="finetuned",
++            checkpoint_path=str(checkpoint_path),
++        )
++    )
++    pred_df = forecaster.predict(history_df)
++    assert len(pred_df) == 6
++    assert "predictions" in pred_df.columns
+diff --git a/docs/finetuning.md b/docs/finetuning.md
+new file mode 100644
+index 0000000..1a0c8fb
+--- /dev/null
++++ b/docs/finetuning.md
+@@ -0,0 +1,72 @@
++# Fine-tuning pipeline
++
++This project supports a practical fine-tuning path through a residual adapter checkpoint.
++The base model remains Chronos-2, TimesFM, or the offline `seasonal_naive` baseline.
++The train command builds rolling forecast windows, asks the selected base backend to forecast each window, and trains a small PyTorch adapter to correct the base forecast residuals.
++
++This keeps the existing Chronos-2 and TimesFM dependency split stable while still giving the project a trainable checkpoint.
++
++## Train on sample_data.csv
++
++```bash
++docker compose run --rm backend \
++  python -m local_ts_forecast.cli train \
++  --input data/sample_data.csv \
++  --target ITEM_A \
++  --base-backend chronos2 \
++  --prediction-length 7 \
++  --context-length 28 \
++  --epochs 20 \
++  --device cuda \
++  --output outputs/finetuned_chronos2_item_a.pt
++```
++
++For TimesFM:
++
++```bash
++docker compose run --rm backend \
++  python -m local_ts_forecast.cli train \
++  --input data/sample_data.csv \
++  --target ITEM_A \
++  --base-backend timesfm \
++  --prediction-length 7 \
++  --context-length 28 \
++  --epochs 20 \
++  --device cuda \
++  --output outputs/finetuned_timesfm_item_a.pt
++```
++
++For a fast offline smoke test:
++
++```bash
++docker compose run --rm backend \
++  python -m local_ts_forecast.cli train \
++  --input data/sample_data.csv \
++  --target ITEM_A \
++  --base-backend seasonal_naive \
++  --prediction-length 7 \
++  --context-length 28 \
++  --epochs 1 \
++  --max-windows 4 \
++  --output outputs/finetuned_smoke.pt
++```
++
++## Forecast with the checkpoint
++
++```bash
++docker compose run --rm backend \
++  python -m local_ts_forecast.cli forecast \
++  --backend finetuned \
++  --checkpoint outputs/finetuned_chronos2_item_a.pt \
++  --input data/sample_data.csv \
++  --target ITEM_A \
++  --prediction-length 7 \
++  --output outputs/forecast_finetuned.csv \
++  --plot outputs/forecast_finetuned.png
++```
++
++## Notes
++
++- This is an adapter fine-tuning path, not full weight fine-tuning of the upstream Chronos-2 or TimesFM model.
++- It is safer in this repository because Chronos-2 and TimesFM currently use different loading paths and dependency assumptions.
++- Increase `--max-windows`, `--epochs`, and `--context-length` when running on real data with a GPU.
