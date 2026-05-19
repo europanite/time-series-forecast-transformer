@@ -9,11 +9,10 @@ docker compose build
 docker compose up
 ```
 
-Open the frontend at <http://127.0.0.1:5173>. The API is also available at <http://127.0.0.1:8000>.
+Open the frontend at <http://127.0.0.1:5173>. 
 
-Do not use the Docker bridge address printed by Vite, such as `http://172.x.x.x:5173/`, from the host browser. Use `127.0.0.1:5173`; the frontend proxies API calls through `/api` to the backend container.
+The API is also available at <http://127.0.0.1:8000>.
 
-The default `.env` selects `FORECAST_BACKEND=seasonal_naive` so the full-stack path can be tested without downloading a foundation model. Switch to `chronos2` or `timesfm` in the UI or `.env` when model downloads are acceptable.
 
 ## Backend CLI
 
@@ -27,14 +26,6 @@ docker compose run --rm backend \
     --target ITEM_A \
     --output outputs/forecast.csv \
     --plot outputs/forecast.png
-```
-
-The repository intentionally keeps only these sample data files:
-
-```text
-data/air_passengers.csv
-data/sample_data.csv
-data/sample_data.xlsx
 ```
 
 Run the API example:
