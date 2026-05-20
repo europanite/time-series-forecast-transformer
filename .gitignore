@@ -54,3 +54,9 @@ frontend/app/coverage/
 
 # Jest cache
 frontend/app/.jest-cache/
+# large local datasets and checkpoints
+data/m4/
+data/m5/
+backend/outputs/*.pt
+backend/outputs/*.pth
+backend/outputs/*.ckpt

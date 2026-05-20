@@ -32,3 +32,6 @@ build/
 web-build/
 .expo/
 .expo-shared/
+
+# large local datasets
+data_private/

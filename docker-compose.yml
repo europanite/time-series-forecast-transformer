@@ -19,6 +19,7 @@ services:
     volumes:
       - ./backend:/workspace
       - ./data:/workspace/data:ro
+      - ./scripts:/workspace/scripts:ro
       - hf-cache:/cache/huggingface
     ports:
       - "8000:8000"
