@@ -207,7 +207,7 @@ export default function App() {
             textDecorationLine: "underline",
           }}
         >
-          Client-Side Time-Series Forecast
+          Time-Series Forecast Transformer
         </Text>
         <Text style={{ color: "#ffffffff", marginBottom: 16 }}>
           A browser-based multivariate time series forecasting tool. No installation, No registration, or No payment is required.

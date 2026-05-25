@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import os
-from pathlib import Path
 
 from .benchmark_datasets import load_training_series, write_records_as_long_csv
 from .forecaster import ForecastConfig, build_forecaster
