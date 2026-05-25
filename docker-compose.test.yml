@@ -13,8 +13,8 @@ services:
       - ./reports/backend:/reports/backend
     command: >-
       sh -lc "python -m pip install -r requirements.test.txt &&
-              coverage run -m pytest &&
-              coverage xml -o /reports/backend/coverage.xml"
+              coverage run --source=local_ts_forecast -m pytest &&
+              coverage xml -i -o /reports/backend/coverage.xml"
 
   frontend_test:
     build:
