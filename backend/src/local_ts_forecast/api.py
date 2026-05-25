@@ -21,6 +21,7 @@ class ForecastRequest(BaseModel):
     backend: str = "chronos2"
     target: str = "target"
     quantile_levels: list[float] = Field(default_factory=lambda: [0.1, 0.5, 0.9])
+    checkpoint_path: str | None = None
 
 
 class ForecastResponse(BaseModel):
@@ -43,7 +44,15 @@ def root() -> dict[str, str]:
 
 
 @lru_cache(maxsize=4)
-def get_forecaster(model_id: str, device: str, backend: str, target: str, prediction_length: int, quantiles: tuple[float, ...]):
+def get_forecaster(
+    model_id: str,
+    device: str,
+    backend: str,
+    target: str,
+    prediction_length: int,
+    quantiles: tuple[float, ...],
+    checkpoint_path: str | None,
+):
     config = ForecastConfig(
         model_id=model_id,
         device=device,
@@ -51,6 +60,7 @@ def get_forecaster(model_id: str, device: str, backend: str, target: str, predic
         quantile_levels=quantiles,
         backend=backend,
         target=target,
+        checkpoint_path=checkpoint_path,
     )
     return build_forecaster(config)
 
@@ -75,6 +85,7 @@ def forecast(req: ForecastRequest) -> ForecastResponse:
             req.target,
             req.prediction_length,
             tuple(req.quantile_levels),
+            req.checkpoint_path,
         )
         pred_df = forecaster.predict(history_df, future_df)
         pred_df = pred_df.copy()

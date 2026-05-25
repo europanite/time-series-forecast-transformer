@@ -6,82 +6,30 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
-  build-test-images:
+  compose-tests:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: write
     steps:
       - uses: actions/checkout@v6
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build backend test image
+      - name: Build Docker Compose test services
         run: |
-          docker build \
-            -f backend/Dockerfile \
-            -t local/backend-test:ci \
-            backend
+          docker compose -f docker-compose.test.yml build backend_test frontend_test
 
-      - name: Build frontend test image
+      - name: Run backend tests
         run: |
-          docker build \
-            -f frontend/Dockerfile \
-            -t local/frontend-test:ci \
-            frontend
+          docker compose -f docker-compose.test.yml run --rm backend_test
 
-      - name: Save images for downstream jobs
+      - name: Run frontend typecheck
         run: |
-          docker save local/backend-test:ci | gzip > backend-test.tar.gz
-          docker save local/frontend-test:ci | gzip > frontend-test.tar.gz
-      - uses: actions/upload-artifact@v6
-        with:
-          name: test-images
-          path: |
-            backend-test.tar.gz
-            frontend-test.tar.gz
+          docker compose -f docker-compose.test.yml run --rm frontend_test
 
-  backend-tests:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
-    needs: build-test-images
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
-        with:
-          name: test-images
-      - name: Load images
+      - name: Clean up Docker Compose resources
+        if: always()
         run: |
-          gunzip -c backend-test.tar.gz | docker load
-      - name: Run service tests
-        run: |
-          docker compose -f docker-compose.test.yml run --rm   --entrypoint /bin/sh backend_test -lc '
-              python -m coverage run -m pytest -q
-            '
-      - name: Upload coverage xml
-        uses: actions/upload-artifact@v6
-        with:
-          name: coverage-xml
-          path: backend/reports/ci/coverage.xml
-          if-no-files-found: error
-
-  frontend-tests:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
-    needs: build-test-images
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
-        with:
-          name: test-images
-      - name: Load images
-        run: |
-          gunzip -c frontend-test.tar.gz | docker load
-      - name: Run frontend tests
-        run: |
-          docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm frontend_test
+          docker compose -f docker-compose.test.yml down --volumes --remove-orphans

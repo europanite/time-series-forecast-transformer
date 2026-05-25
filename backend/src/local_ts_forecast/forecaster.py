@@ -20,6 +20,7 @@ class ForecastConfig:
     batch_size: int | None = None
     context_length: int | None = None
     backend: str = "chronos2"
+    checkpoint_path: str | None = None
 
 
 def _primary_target(target: str | list[str]) -> str:
@@ -312,6 +313,52 @@ class SeasonalNaiveForecaster:
         return pd.DataFrame(rows)
 
 
+class TrainedTorchForecaster:
+    """Forecast with a checkpoint produced by `local_ts_forecast.cli train`."""
+
+    def __init__(self, config: ForecastConfig) -> None:
+        self.config = config
+
+    def predict(self, history_df: pd.DataFrame, future_df: pd.DataFrame | None = None) -> pd.DataFrame:
+        if not self.config.checkpoint_path:
+            raise ValueError("backend=trained_torch requires --checkpoint / checkpoint_path")
+        from .torch_training import predict_with_torch_checkpoint
+
+        return predict_with_torch_checkpoint(
+            self.config.checkpoint_path,
+            history_df,
+            future_df,
+            target=_primary_target(self.config.target),
+            id_column=self.config.id_column,
+            timestamp_column=self.config.timestamp_column,
+            prediction_length=self.config.prediction_length,
+            device=self.config.device,
+        )
+
+
+class FoundationAdapterForecaster:
+    """Forecast with frozen Chronos/TimesFM plus a trained adapter head."""
+
+    def __init__(self, config: ForecastConfig) -> None:
+        self.config = config
+
+    def predict(self, history_df: pd.DataFrame, future_df: pd.DataFrame | None = None) -> pd.DataFrame:
+        if not self.config.checkpoint_path:
+            raise ValueError("backend=foundation_adapter requires --checkpoint / checkpoint_path")
+        from .foundation_adapter import predict_with_foundation_adapter_checkpoint
+
+        return predict_with_foundation_adapter_checkpoint(
+            self.config.checkpoint_path,
+            history_df,
+            future_df,
+            target=_primary_target(self.config.target),
+            id_column=self.config.id_column,
+            timestamp_column=self.config.timestamp_column,
+            prediction_length=self.config.prediction_length,
+            device=self.config.device,
+        )
+
+
 def build_forecaster(config: ForecastConfig):  # noqa: ANN201
     if config.backend == "chronos2":
         return Chronos2Forecaster(config)
@@ -319,4 +366,8 @@ def build_forecaster(config: ForecastConfig):  # noqa: ANN201
         return TimesFMForecaster(config)
     if config.backend == "seasonal_naive":
         return SeasonalNaiveForecaster(config)
+    if config.backend == "trained_torch":
+        return TrainedTorchForecaster(config)
+    if config.backend == "foundation_adapter":
+        return FoundationAdapterForecaster(config)
     raise ValueError(f"Unknown backend: {config.backend}")
