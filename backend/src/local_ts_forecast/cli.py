@@ -12,7 +12,6 @@ from .sample_data import write_sample_data
 from .settings import get_settings
 from .torch_training import TorchTrainConfig, train_torch_forecaster
 
-
 M4_FREQUENCY_CHOICES = ["Yearly", "Quarterly", "Monthly", "Weekly", "Daily", "Hourly"]
 
 

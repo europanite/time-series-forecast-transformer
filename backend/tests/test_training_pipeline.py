@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from local_ts_forecast.benchmark_datasets import load_m4_series, load_m5_series, write_records_as_long_csv
+from local_ts_forecast.benchmark_datasets import (
+    load_m4_series,
+    load_m5_series,
+    write_records_as_long_csv,
+)
 from local_ts_forecast.forecaster import ForecastConfig, build_forecaster
 from local_ts_forecast.torch_training import TorchTrainConfig, train_torch_forecaster
 
