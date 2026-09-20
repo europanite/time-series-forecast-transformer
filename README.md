@@ -14,7 +14,7 @@
 
 !["web_ui"](./assets/images/web_ui.png)
 
-Time-Series-Forecast-Transformer working at the local container.
+The container for the Local Time-Series-Forecast-Transformer.
 
 ## Run
 
