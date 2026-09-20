@@ -19,17 +19,17 @@ jobs:
         os: [ ubuntu-latest ]
         python-version: [ "3.10", "3.11", "3.12", "3.13", "3.14" ]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
-      - name: Install lint tools
+          cache-dependency-path: backend/requirements.test.txt
+      - name: Install tools
         run: |
-          cd backend
           python -m pip install -U pip
-          python -m pip install -r requirements.test.txt
+          pip install -r backend/requirements.test.txt
       - name: Ruff (lint)
         run: ruff check .
       - name: Ruff SARIF
@@ -39,3 +39,4 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ruff.sarif
+
