@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-
 from local_ts_forecast.benchmark_datasets import (
     load_m4_series,
     load_m5_series,
