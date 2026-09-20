@@ -3,7 +3,7 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "local-ts-forecast"
+name = "time-series-forecast-transformer"
 version = "0.1.0"
 description = "Docker Compose based local time-series forecasting with Chronos-2 and TimesFM."
 requires-python = ">=3.11"
