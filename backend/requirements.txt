@@ -1,6 +1,6 @@
 chronos-forecasting==2.3.2
 pandas[pyarrow]==2.3.3
-numpy==2.4.6
+numpy==2.2.6
 matplotlib==3.11.2
 fastapi==0.141.1
 uvicorn[standard]==0.53.0
