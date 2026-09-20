@@ -10,4 +10,3 @@ huggingface-hub==1.32.0
 torch==2.7.1
 transformers==5.17.0
 timesfm[torch]==3.0.2
- -e .
