@@ -5,7 +5,12 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from .io import make_future_frame, normalize_future, normalize_history, validate_prediction_length
+from .io import (
+    make_future_frame,
+    normalize_future,
+    normalize_history,
+    validate_prediction_length,
+)
 
 
 @dataclass(frozen=True)
@@ -43,7 +48,7 @@ class Chronos2Forecaster:
         self._pipeline = None
 
     @property
-    def pipeline(self):  # noqa: ANN201 - external pipeline type differs across versions
+    def pipeline(self):
         if self._pipeline is None:
             from chronos import Chronos2Pipeline
 
@@ -99,7 +104,7 @@ class TimesFMForecaster:
         self._model = None
 
     @property
-    def model(self):  # noqa: ANN201 - external model type differs across versions
+    def model(self):
         if self._model is None:
             self._model = self._load_model()
         return self._model
@@ -137,7 +142,7 @@ class TimesFMForecaster:
             "token",
         }
 
-        def compatible_init(self, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        def compatible_init(self, *args, **kwargs):
             for key in ignored_kwargs:
                 kwargs.pop(key, None)
             return original_init(self, *args, **kwargs)
@@ -145,9 +150,9 @@ class TimesFMForecaster:
         model_cls.__init__ = compatible_init
         model_cls._local_ts_forecast_hub_kwargs_patch = True
 
-    def _load_model(self):  # noqa: ANN201 - external model type differs across versions
-        import torch
+    def _load_model(self):
         import timesfm
+        import torch
 
         self._resolve_torch_device()
         model_id = self.config.model_id
@@ -260,7 +265,7 @@ class TimesFMForecaster:
         for q in self.config.quantile_levels:
             if not 0 < q < 1:
                 continue
-            decile = int(round(q * 10))
+            decile = round(q * 10)
             if 1 <= decile <= 9:
                 idx = decile  # 0 is mean; 1..9 are q10..q90.
                 if idx < quantile_forecast.shape[2]:
@@ -359,7 +364,7 @@ class FoundationAdapterForecaster:
         )
 
 
-def build_forecaster(config: ForecastConfig):  # noqa: ANN201
+def build_forecaster(config: ForecastConfig):
     if config.backend == "chronos2":
         return Chronos2Forecaster(config)
     if config.backend == "timesfm":

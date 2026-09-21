@@ -9,7 +9,12 @@ import numpy as np
 import pandas as pd
 
 from .benchmark_datasets import SeriesRecord
-from .io import make_future_frame, normalize_future, normalize_history, validate_prediction_length
+from .io import (
+    make_future_frame,
+    normalize_future,
+    normalize_history,
+    validate_prediction_length,
+)
 
 
 @dataclass(frozen=True)
@@ -46,7 +51,7 @@ class _WindowExample:
     target: np.ndarray
 
 
-def _torch_device(device: str):  # noqa: ANN202
+def _torch_device(device: str):
     import torch
 
     if device == "auto":
@@ -56,7 +61,7 @@ def _torch_device(device: str):  # noqa: ANN202
     return torch.device(device)
 
 
-def _build_adapter_head(feature_size: int, hidden_size: int, dropout: float):  # noqa: ANN202
+def _build_adapter_head(feature_size: int, hidden_size: int, dropout: float):
     from torch import nn
 
     return nn.Sequential(
@@ -302,7 +307,7 @@ def train_foundation_adapter(
     }
 
 
-def _load_adapter_checkpoint(checkpoint_path: str | Path, device: str):  # noqa: ANN202
+def _load_adapter_checkpoint(checkpoint_path: str | Path, device: str):
     import torch
 
     path = Path(checkpoint_path).expanduser().resolve()
@@ -351,7 +356,7 @@ def _correct_predictions(
         group = group.sort_values(timestamp_column)
         base_values = group[pred_col].astype("float32").to_numpy()
         context = hist[target_column].astype("float32").to_numpy()
-        features, mean, std = _feature_array(base_values, context)
+        features, _mean, std = _feature_array(base_values, context)
 
         with torch.no_grad():
             xb = torch.from_numpy(features).unsqueeze(0).to(device)

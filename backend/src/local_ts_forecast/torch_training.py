@@ -9,7 +9,12 @@ import numpy as np
 import pandas as pd
 
 from .benchmark_datasets import SeriesRecord
-from .io import make_future_frame, normalize_future, normalize_history, validate_prediction_length
+from .io import (
+    make_future_frame,
+    normalize_future,
+    normalize_history,
+    validate_prediction_length,
+)
 
 
 @dataclass(frozen=True)
@@ -32,7 +37,7 @@ class TinyTimeSeriesTransformer:  # placeholder for type checkers before torch i
     pass
 
 
-def _torch_device(device: str):  # noqa: ANN202
+def _torch_device(device: str):
     import torch
 
     if device == "auto":
@@ -42,7 +47,7 @@ def _torch_device(device: str):  # noqa: ANN202
     return torch.device(device)
 
 
-def _build_model(config: TorchTrainConfig):  # noqa: ANN202
+def _build_model(config: TorchTrainConfig):
     import torch
     from torch import nn
 
@@ -65,7 +70,7 @@ def _build_model(config: TorchTrainConfig):  # noqa: ANN202
                 nn.Linear(config.d_model, config.prediction_length),
             )
 
-        def forward(self, x):  # noqa: ANN001, ANN202
+        def forward(self, x):
             x = x.unsqueeze(-1)
             h = self.value_projection(x) + self.position
             h = self.encoder(h)

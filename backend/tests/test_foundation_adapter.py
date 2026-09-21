@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-
 from local_ts_forecast.benchmark_datasets import SeriesRecord, write_records_as_long_csv
 from local_ts_forecast.forecaster import ForecastConfig, build_forecaster
-from local_ts_forecast.foundation_adapter import FoundationAdapterTrainConfig, train_foundation_adapter
+from local_ts_forecast.foundation_adapter import (
+    FoundationAdapterTrainConfig,
+    train_foundation_adapter,
+)
 
 
 def test_foundation_adapter_training_roundtrip(tmp_path: Path) -> None:

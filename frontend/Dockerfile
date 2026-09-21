@@ -1,4 +1,4 @@
-FROM node:22.21.1-bookworm-slim
+FROM node:24-bookworm-slim
 
 WORKDIR /app
 ENV npm_config_registry=https://registry.npmjs.org/ \

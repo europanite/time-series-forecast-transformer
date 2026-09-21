@@ -14,7 +14,7 @@
 
 !["web_ui"](./assets/images/web_ui.png)
 
-Time-Series-Forecast-Transformer working at the local container.
+The container for the Local Time-Series-Forecast-Transformer.
 
 ## Run
 
@@ -206,3 +206,8 @@ Evaluation rows: **180,000**
 | Chronos-2 + Adapter | Frozen foundation model + trained adapter/head | `outputs/m4_monthly_chronos2_adapter_forecast.csv` | 646.648479 | 1422.491100 | 17.943740% | 14.863127% |
 | TimesFM | Zero-shot | `outputs/m4_monthly_zero_shot_timesfm.csv` | 607.634425 | **1367.991547** | 17.942648% | 14.922394% |
 | TimesFM + Adapter | Frozen foundation model + trained adapter/head | `outputs/m4_monthly_timesfm_adapter_forecast.csv` | 765.064199 | 1540.075852 | 23.020814% | 17.705266% |
+
+---
+
+# License
+- Apache License 2.0

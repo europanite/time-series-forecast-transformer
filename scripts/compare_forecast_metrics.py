@@ -6,7 +6,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-
 DEFAULT_ACTUAL_PATH = "outputs/m4_monthly_holdout_actual.csv"
 DEFAULT_PREDICTIONS = [
     "outputs/m4_monthly_zero_shot_chronos2.csv",
